@@ -26,6 +26,9 @@ PKGFILES	:=	pkgfiles
 
 CFLAGS		=	-O2 -Wall -Wno-format-truncation -std=gnu99 -mcpu=cell $(MACHDEP) $(INCLUDE)
 CXXFLAGS	=	$(CFLAGS)
+# link with the PPU compiler driver (the default LD is the host ld, which rejects -mhard-float)
+LD		:=	$(CXX)
+
 LDFLAGS		=	$(MACHDEP) -Wl,-Map,$(notdir $@).map
 
 LIBS		:=	-lrsx -lgcm_sys -lio -lnet -lsysutil -lrt -llv2 -lm
