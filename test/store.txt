@@ -1,0 +1,9 @@
+# name|description|kind|size  (invented sample entries)
+Nova Racer|Arcade racing on glowing tracks|Game|420 MB
+Pixel Quest|Retro platformer adventure|Game|88 MB
+Tide Player|Simple music player|App|6 MB
+Frame Viewer|Photo viewer with slideshow|App|4 MB
+Skyline Tactics|Turn-based city strategy|Game|1.2 GB
+Echo Radio|Internet radio client|App|9 MB
+Block Garden|Relaxing puzzle game|Game|55 MB
+Night Terminal|Text console utility|App|2 MB

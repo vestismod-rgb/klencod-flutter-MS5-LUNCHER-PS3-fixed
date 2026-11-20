@@ -1,0 +1,125 @@
+name: Build PS3 PKG
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    name: Host tests (scanner, launcher URLs, UI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate text data with Tajawal font (optional)
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-pil libraqm0
+          sh tools/fetch_fonts.sh
+          python3 tools/gen_text.py
+
+      - name: Build and run tests
+        run: |
+          python3 test/make_fake_root.py /tmp/fakeps3
+          gcc -Wall -O1 -fsanitize=address,undefined -o /tmp/test_scan test/test_scan.c source/scan.c
+          gcc -Wall -O1 -o /tmp/test_launch test/test_launch.c source/launch.c
+          gcc -Wall -O2 -fsanitize=address,undefined -o /tmp/host test/host_main.c \
+              source/ui.c source/scene.c source/gfx.c source/scan.c source/pages.c source/textdata.c -lm
+          /tmp/test_scan /tmp/fakeps3
+          /tmp/test_launch
+          mkdir -p /tmp/frames
+          /tmp/host /tmp/fakeps3
+
+  build-pkg:
+    name: Build .pkg
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate text data with Tajawal font (optional)
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-pil libraqm0
+          sh tools/fetch_fonts.sh
+          python3 tools/gen_text.py
+
+      - name: Prepare toolchain directory
+        run: |
+          sudo mkdir -p "$PS3DEV"
+          sudo chown "$USER" "$PS3DEV"
+
+      - name: Restore toolchain cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ runner.os }}-v1
+
+      - name: Install build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison flex gcc g++ libelf-dev make texinfo \
+            libncurses5-dev patch python-is-python3 python3-dev subversion wget zlib1g-dev \
+            libtool libtool-bin bzip2 libgmp3-dev pkg-config libssl-dev git
+
+      - name: Build ps3dev toolchain (first run only, about 1 hour)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          export PATH="$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin"
+          git clone --depth 1 https://github.com/ps3dev/ps3toolchain.git /tmp/ps3dev-src
+          cd /tmp/ps3dev-src
+          ./toolchain.sh
+
+      - name: Save toolchain cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ runner.os }}-v1
+
+      - name: Install runtime tools for packaging
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python-is-python3 python3-dev make
+
+      - name: Build .pkg
+        run: |
+          export PATH="$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin"
+          set -o pipefail
+          make pkg 2>&1 | tee build.log
+
+      - name: Show build errors (short)
+        if: failure()
+        run: |
+          echo "=== lines with errors ==="
+          grep -n -E "error|Error|undefined reference|\*\*\*" build.log | head -40 || true
+          echo "=== last 30 lines ==="
+          tail -30 build.log
+
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MS5Luncher-pkg
+          path: |
+            MS5Luncher.pkg
+            MS5Luncher.self
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: MS5Luncher.pkg

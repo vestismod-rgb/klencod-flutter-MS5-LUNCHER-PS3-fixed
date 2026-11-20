@@ -1,0 +1,7 @@
+build/
+*.elf
+*.self
+*.pkg
+*.map
+*.ppm
+fonts/
